@@ -542,7 +542,7 @@
         function startTimer() {
             gameState = 'charging'; 
             statusMessage.classList.add('hidden');
-            gameStatusHint.textContent = '充能中... (點擊你的區域停止)';
+            gameStatusHint.textContent = '充能中... (點擊你的區域停止)(最多1分鐘)';
             gameStatusHint.classList.remove('hidden');
             
             globalStartTime = performance.now();
@@ -754,4 +754,5 @@
 
     </script>
 </body>
+
 </html>
