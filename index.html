@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>時間引擎核心</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Tone.js (Web Audio) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <!-- Load Sci-fi Fonts & Chinese Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Orbitron:wght@400..900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+    <style>
+        /* Custom Styles */
+        body {
+            /* 優先使用 Orbitron (英文數字)，中文使用 Noto Sans TC */
+            font-family: 'Orbitron', 'Noto Sans TC', sans-serif;
+            -webkit-touch-callout: none; /* iOS Safari */
+            -webkit-user-select: none; /* Safari */
+            -khtml-user-select: none; /* Konqueror HTML */
+            -moz-user-select: none; /* Old versions of Firefox */
+            -ms-user-select: none; /* Internet Explorer/Edge */
+            user-select: none; /* Non-prefixed version */
+        }
+
+        /* Fullscreen & No-scroll */
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            position: fixed; /* Prevents sliding */
+        }
+
+        /* Main Container */
+        #app-container {
+            width: 100vw;
+            height: 100vh;
+            background-color: #0a0a1a; /* Deep blue */
+            color: #00f0ff; /* Cyan */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            overflow: hidden;
+        }
+
+        /* Screen Base */
+        .screen {
+            width: 100%;
+            height: 100%;
+            padding: 2rem 1rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start; 
+            align-items: center;
+            gap: 1rem; 
+            position: absolute;
+            transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+            overflow-y: auto; 
+        }
+
+        /* Hidden Screen */
+        .screen.hidden {
+            opacity: 0;
+            transform: scale(0.95);
+            pointer-events: none;
+        }
+        
+        #setup-screen {
+            justify-content: center;
+        }
+
+        /* Button Style */
+        .btn {
+            background-color: #0d253f;
+            border: 2px solid #00f0ff;
+            color: #00f0ff;
+            padding: 0.75rem 2rem;
+            font-size: 1.25rem;
+            font-weight: 700;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 0 10px #00f0ff, 0 0 20px #00f0ff inset;
+            text-shadow: 0 0 5px #00f0ff;
+            flex-shrink: 0; 
+        }
+        .btn:hover, .btn:active {
+            background-color: #00f0ff;
+            color: #0a0a1a;
+            box-shadow: 0 0 20px #00f0ff, 0 0 40px #00f0ff inset;
+        }
+        
+        /* Touch Area Container */
+        #touch-areas-container {
+            width: 100%;
+            flex-grow: 1; 
+            display: grid;
+            gap: 1rem;
+            padding: 1rem 0 2rem 0; 
+            box-sizing: border-box; 
+        }
+
+        /* Touch Area */
+        .touch-area {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 12px;
+            font-size: 1.5rem; 
+            font-weight: bold;
+            color: white;
+            transition: all 0.1s ease;
+            border: 4px dashed rgba(255, 255, 255, 0.3);
+            word-break: break-word;
+            padding: 0.5rem;
+            opacity: 0.5;
+            pointer-events: none;
+            min-height: 110px; 
+        }
+        
+        .touch-area.ready {
+             opacity: 0.5;
+             pointer-events: none;
+        }
+        
+        .touch-area.charging {
+             opacity: 1;
+             pointer-events: auto;
+             cursor: pointer;
+        }
+        
+        .touch-area.done {
+            opacity: 0.3;
+            border-style: solid;
+            background-color: #333;
+            pointer-events: none;
+        }
+        
+        /* Style for failed state on touch area */
+        .touch-area.failed {
+            opacity: 0.8;
+            border-style: solid;
+            border-color: #ef4444; /* Red border */
+            background-color: #331111;
+            color: #ef4444;
+            pointer-events: none;
+        }
+
+        /* Status Message (Countdown) */
+        #status-message {
+            font-size: 2.5rem;
+            font-weight: 900;
+            text-shadow: 0 0 15px #00f0ff;
+            z-index: 10;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 1rem;
+            border-radius: 10px;
+        }
+        
+        /* Top Status Hint */
+        #game-status-hint {
+            color: white;
+            font-size: 1.1rem; /* Slightly smaller for Chinese density */
+            text-shadow: 0 0 5px #fff;
+            height: 2rem; /* Fixed height to prevent jumps */
+        }
+        
+        .countdown {
+             font-size: 5rem !important;
+             font-family: 'Share Tech Mono', monospace;
+        }
+
+        /* Results Modal */
+        #results-screen {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0, 0, 0, 0.75); /* Translucent bg */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            padding: 1rem;
+        }
+        
+        #results-modal-content {
+            background-color: #0a0a1a;
+            border: 2px solid #00f0ff;
+            border-radius: 12px;
+            padding: 2rem 1.5rem;
+            width: 95%;
+            max-width: 600px;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            box-shadow: 0 0 30px #00f0ff;
+        }
+
+        #results-list {
+            font-size: 1rem; 
+            background-color: rgba(0, 0, 0, 0.3);
+            padding: 1.5rem;
+            border-radius: 10px;
+            border: 2px solid #00f0ff;
+            width: 100%;
+        }
+        
+        .font-numeric {
+            font-family: 'Share Tech Mono', monospace;
+        }
+        
+        /* Card Settings UI */
+        #pre-game-controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem; 
+            width: 100%;
+            max-width: 500px;
+            flex-shrink: 0; 
+            max-height: 60vh; 
+            overflow-y: auto;
+            padding: 0.5rem; 
+        }
+
+        #card-selection-container {
+            width: 100%;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr)); /* 2 per row */
+            gap: 0.5rem;
+            padding: 0.75rem;
+            border-radius: 8px;
+            background-color: rgba(0, 0, 0, 0.3);
+            border: 1px solid #00f0ff;
+        }
+        
+        .card-selector {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+        }
+        
+        .card-selector label {
+            font-size: 0.875rem; /* text-sm */
+            font-weight: bold;
+            text-shadow: 0 0 5px #fff;
+        }
+        
+        /* Counter Control Styles */
+        .counter-control {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-counter {
+            background-color: rgba(0, 240, 255, 0.2);
+            border: 1px solid #00f0ff;
+            color: #00f0ff;
+            width: 2rem;
+            height: 2rem;
+            border-radius: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.1s;
+        }
+
+        .btn-counter:active {
+            background-color: #00f0ff;
+            color: #000;
+        }
+
+        .counter-display {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 1.2rem;
+            color: white;
+            min-width: 1.5rem;
+            text-align: center;
+        }
+        
+    </style>
+</head>
+<body class="bg-black">
+
+    <div id="app-container">
+
+        <!-- ===== Setup Screen (設定畫面) ===== -->
+        <div id="setup-screen" class="screen">
+            <h1 class="text-4xl sm:text-5xl font-extrabold text-shadow-lg leading-tight" style="text-shadow: 0 0 10px #00f0ff;">時間引擎核心</h1>
+            <p class="text-xl sm:text-2xl mt-2">選擇玩家人數</p>
+            <div class="flex flex-col gap-4 mt-8">
+                <button class="btn" onclick="initGame(3)">3 人</button>
+                <button class="btn" onclick="initGame(4)">4 人</button>
+                <button class="btn" onclick="initGame(5)">5 人</button>
+            </div>
+            <p class="text-sm mt-8 opacity-70">*請將手機平放在桌子中央*</p>
+        </div>
+
+        <!-- ===== Game Screen (遊戲畫面) ===== -->
+        <div id="game-screen" class="screen hidden">
+            <p id="game-status-hint" class="text-lg mt-2 text-white">設定手牌數量，然後按下按鈕開始倒數</p>
+            
+            <div id="pre-game-controls">
+                <button id="start-countdown-btn" class="btn">開始 3 秒倒數</button>
+                
+                <div id="card-selection-container">
+                    <!-- Card selectors will be dynamically generated here -->
+                </div>
+            </div>
+            
+            <div id="status-message" class="hidden"></div>
+            <div id="touch-areas-container"></div>
+        </div>
+
+        <!-- ===== Results Screen Modal (結果報告) ===== -->
+        <div id="results-screen" class="screen hidden">
+            <div id="results-modal-content">
+                <h1 class="text-4xl font-extrabold" style="text-shadow: 0 0 10px #00f0ff;">充能報告</h1>
+                <div id="results-list" class="space-y-3 text-left">
+                    <!-- Results will be dynamically generated here -->
+                </div>
+                <div class="flex flex-col sm:flex-row gap-4 mt-4 justify-center">
+                    <button class="btn" onclick="playAgain()">繼續任務</button>
+                    <button class="btn" onclick="resetGame()">主選單</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // DOM Elements
+        const setupScreen = document.getElementById('setup-screen');
+        const gameScreen = document.getElementById('game-screen');
+        const resultsScreen = document.getElementById('results-screen');
+        const touchAreasContainer = document.getElementById('touch-areas-container');
+        const statusMessage = document.getElementById('status-message');
+        const resultsList = document.getElementById('results-list');
+        const startCountdownBtn = document.getElementById('start-countdown-btn'); 
+        const preGameControls = document.getElementById('pre-game-controls');
+        const cardSelectionContainer = document.getElementById('card-selection-container');
+        const gameStatusHint = document.getElementById('game-status-hint');
+
+        // Game State
+        let gameState = 'setup'; 
+        let playerCount = 0;
+        let players = [];
+        let globalStartTime = 0;
+        let playersFinishedCount = 0;
+        let gameTimeout = null; // Timer for the 60s limit
+        
+        // Localized Labels - Renamed as requested
+        const playerLabels = ['A 星', 'B 星', 'C 星', 'D 星', 'E 星'];
+        const playerColors = [
+            { name: 'Red', bg: 'bg-red-600', pulse: '#ef4444' },
+            { name: 'Blue', bg: 'bg-blue-600', pulse: '#3b82f6' },
+            { name: 'Green', bg: 'bg-green-600', pulse: '#22c55e' },
+            { name: 'Yellow', bg: 'bg-yellow-500', pulse: '#eab308' },
+            { name: 'Purple', bg: 'bg-purple-600', pulse: '#9333ea' }
+        ];
+
+        // Audio
+        let audioInitialized = false;
+        let noiseSynth, countdownBeep, chargingHum, failSound;
+
+        async function initAudio() {
+            if (audioInitialized) return;
+            await Tone.start();
+            countdownBeep = new Tone.Synth().toDestination();
+            noiseSynth = new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.005, decay: 0.1, sustain: 0 } }).toDestination();
+            chargingHum = new Tone.Oscillator("C2", "sine").toDestination();
+            chargingHum.volume.value = -20;
+            
+            // Add a simple fail sound (low pitch descent)
+            failSound = new Tone.Synth().toDestination();
+
+            audioInitialized = true;
+            console.log("Audio initialized");
+        }
+
+        // 1. Initialize Game
+        function initGame(count) {
+            if (!audioInitialized) initAudio();
+
+            playerCount = count;
+            players = [];
+            playersFinishedCount = 0;
+            gameState = 'ready'; 
+            touchAreasContainer.innerHTML = '';
+            cardSelectionContainer.innerHTML = ''; 
+            
+            if (count === 3) {
+                touchAreasContainer.style.gridTemplateRows = '1fr 1fr';
+                touchAreasContainer.style.gridTemplateColumns = '1fr 1fr';
+            } else if (count === 4) {
+                touchAreasContainer.style.gridTemplateRows = '1fr 1fr';
+                touchAreasContainer.style.gridTemplateColumns = '1fr 1fr';
+            } else if (count === 5) {
+                touchAreasContainer.style.gridTemplateRows = '1fr 1fr';
+                touchAreasContainer.style.gridTemplateColumns = '1fr 1fr 1fr';
+            }
+
+            for (let i = 0; i < playerCount; i++) {
+                const pColor = playerColors[i];
+                const pLabel = playerLabels[i]; 
+                players.push({ 
+                    id: i, 
+                    playerLabel: pLabel, 
+                    color: pColor.name, 
+                    bgColor: pColor.bg, 
+                    pulseColor: pColor.pulse, 
+                    endTime: 0, 
+                    finalTime: 0, 
+                    cardCount: 0, 
+                    calculatedTime: 0,
+                    failed: false // New property to track failure
+                });
+                
+                const area = document.createElement('div');
+                area.id = `player-${i}`;
+                area.className = `touch-area ${pColor.bg} ready`; 
+                area.textContent = pLabel; 
+                touchAreasContainer.appendChild(area);
+
+                area.addEventListener('touchstart', (e) => handleTouchStart(e, i), { passive: false });
+                area.addEventListener('mousedown', (e) => handleTouchStart(e, i), { passive: false });
+                area.addEventListener('touchend', (e) => e.preventDefault(), { passive: false });
+                area.addEventListener('mouseup', (e) => e.preventDefault(), { passive: false });
+                
+                // --- Card Selector UI Modification ---
+                const selectorDiv = document.createElement('div');
+                selectorDiv.className = `card-selector ${pColor.bg} bg-opacity-50`;
+                
+                const label = document.createElement('label');
+                label.textContent = `${pLabel}`; 
+                label.className = `text-${pColor.name}-100`; 
+                
+                // Container for buttons and display
+                const controlDiv = document.createElement('div');
+                controlDiv.className = 'counter-control';
+
+                // Minus Button
+                const btnMinus = document.createElement('div');
+                btnMinus.className = 'btn-counter';
+                btnMinus.textContent = '-';
+                btnMinus.onclick = () => updateCardCount(i, -1);
+
+                // Display Span
+                const displaySpan = document.createElement('span');
+                displaySpan.id = `player-cards-display-${i}`;
+                displaySpan.className = 'counter-display';
+                displaySpan.textContent = '0'; // Default start at 0
+
+                // Plus Button
+                const btnPlus = document.createElement('div');
+                btnPlus.className = 'btn-counter';
+                btnPlus.textContent = '+';
+                btnPlus.onclick = () => updateCardCount(i, 1);
+
+                controlDiv.appendChild(btnMinus);
+                controlDiv.appendChild(displaySpan);
+                controlDiv.appendChild(btnPlus);
+
+                selectorDiv.appendChild(label);
+                selectorDiv.appendChild(controlDiv);
+                cardSelectionContainer.appendChild(selectorDiv);
+            }
+
+            preGameControls.classList.remove('invisible'); 
+            gameStatusHint.textContent = '設定手牌數量，然後按下按鈕開始倒數';
+            gameStatusHint.classList.remove('hidden'); 
+            startCountdownBtn.onclick = startCountdown; 
+
+            setupScreen.classList.add('hidden');
+            gameScreen.classList.remove('hidden');
+            resultsScreen.classList.add('hidden'); 
+        }
+
+        // Helper to update card count UI
+        function updateCardCount(playerId, change) {
+            const display = document.getElementById(`player-cards-display-${playerId}`);
+            let currentCount = parseInt(display.textContent, 10);
+            let newCount = currentCount + change;
+            if (newCount < 0) newCount = 0; // Minimum 0
+            display.textContent = newCount;
+        }
+
+        // Show Status (Countdown)
+        function showStatusMessage(msg, isCountdown = false) {
+            statusMessage.textContent = msg;
+            statusMessage.classList.remove('hidden');
+            statusMessage.classList.toggle('countdown', isCountdown);
+        }
+
+        // 3. Start Countdown
+        function startCountdown() {
+            for (let i = 0; i < playerCount; i++) {
+                // Updated to read from the span text content
+                const cardDisplay = document.getElementById(`player-cards-display-${i}`);
+                players[i].cardCount = parseInt(cardDisplay.textContent, 10);
+            }
+
+            preGameControls.classList.add('invisible'); 
+            gameStatusHint.classList.add('hidden'); 
+            gameState = 'countdown'; 
+            
+            showStatusMessage('3', true); 
+            if(audioInitialized) countdownBeep.triggerAttackRelease("C5", "0.2", Tone.now());
+            
+            setTimeout(() => {
+                showStatusMessage('2', true);
+                if(audioInitialized) countdownBeep.triggerAttackRelease("C5", "0.2", Tone.now());
+            }, 1000);
+            
+            setTimeout(() => {
+                showStatusMessage('1', true);
+                if(audioInitialized) countdownBeep.triggerAttackRelease("C5", "0.2", Tone.now());
+            }, 2000);
+            
+            setTimeout(startTimer, 3000);
+        }
+
+        // 4. Timer Starts
+        function startTimer() {
+            gameState = 'charging'; 
+            statusMessage.classList.add('hidden');
+            gameStatusHint.textContent = '充能中... (點擊你的區域停止)';
+            gameStatusHint.classList.remove('hidden');
+            
+            globalStartTime = performance.now();
+            
+            if(audioInitialized) chargingHum.start(); 
+
+            players.forEach(p => {
+                const area = document.getElementById(`player-${p.id}`);
+                area.classList.remove('ready'); 
+                area.classList.add('charging'); 
+                area.textContent = '充能中...';
+            });
+
+            // Set 60s timeout
+            if (gameTimeout) clearTimeout(gameTimeout);
+            gameTimeout = setTimeout(handleGameTimeout, 60000); // 60 seconds
+        }
+
+        // Handle 60s Timeout
+        function handleGameTimeout() {
+            if (gameState !== 'charging') return;
+
+            // Stop charging sound
+            if(audioInitialized) {
+                chargingHum.stop();
+                // Play a fail sound effect
+                failSound.triggerAttackRelease("C2", "0.5");
+            }
+
+            // Mark unfinished players as failed
+            players.forEach(p => {
+                if (p.endTime === 0) {
+                    p.failed = true;
+                    const area = document.getElementById(`player-${p.id}`);
+                    area.classList.remove('charging');
+                    area.classList.add('failed'); // Use failed style
+                    area.textContent = '充能失敗';
+                }
+            });
+
+            gameStatusHint.textContent = '充能超時！';
+            
+            // Move to results after a short delay
+            setTimeout(showResults, 1500);
+        }
+
+        // 5. Handle Touch
+        function handleTouchStart(e, id) {
+            e.preventDefault();
+            if (gameState !== 'charging' || players[id].endTime > 0) return;
+
+            players[id].endTime = performance.now();
+            players[id].finalTime = (players[id].endTime - globalStartTime) / 1000; 
+            playersFinishedCount++;
+
+            if(audioInitialized) noiseSynth.triggerAttackRelease("0.1");
+
+            const area = document.getElementById(`player-${id}`);
+            area.classList.remove('charging');
+            area.classList.add('done');
+            area.textContent = `充能完成`; 
+
+            if (playersFinishedCount === playerCount) {
+                if(audioInitialized) chargingHum.stop(); 
+                if (gameTimeout) clearTimeout(gameTimeout); // Clear the timeout since everyone finished
+                gameStatusHint.classList.add('hidden');
+                setTimeout(showResults, 1000);
+            }
+        }
+
+        // 6. Show Results
+        function showResults() {
+            gameState = 'results';
+            
+            players.forEach(p => {
+                if (p.failed) {
+                    p.calculatedTime = Infinity; // Assign Infinity to ensure they are last in ascending sort
+                } else {
+                    p.calculatedTime = p.finalTime - (p.cardCount * 1); 
+                }
+            });
+            
+            // Sort by calculatedTime ascending (Smallest to Largest)
+            // Failed players (Infinity) will naturally go to the end
+            const sortedPlayers = [...players].sort((a, b) => {
+                // Explicit failed check to be safe, though Infinity handles it
+                if (a.failed && !b.failed) return 1; 
+                if (!a.failed && b.failed) return -1;
+                return a.calculatedTime - b.calculatedTime;
+            });
+            
+            resultsList.innerHTML = ''; 
+            
+            sortedPlayers.forEach((p, index) => {
+                const li = document.createElement('div');
+                li.className = 'p-2 rounded w-full';
+                
+                const penalty = (p.cardCount * 1); 
+                const playerTag = `${p.playerLabel} (-${penalty}):`; 
+                const arrow = `<span class="text-gray-400 mx-2">&rarr;</span>`; 
+                
+                let resultHtml = '';
+                let originalTimeStr = '';
+
+                if (p.failed) {
+                    originalTimeStr = `<span class="text-red-800 line-through">--.--s</span>`;
+                    resultHtml = `<span class="font-bold text-xl text-red-500">充能失敗</span>`;
+                } else {
+                    originalTimeStr = `<span class="text-gray-300">${p.finalTime.toFixed(3)}s</span>`;
+                    
+                    if (p.calculatedTime < 1) { 
+                        // If calculated time is very small (or negative), highlight red
+                        resultHtml = `<span class="font-bold text-xl text-red-500">${p.calculatedTime.toFixed(3)}s</span>`;
+                    } else {
+                        const timeStr = p.calculatedTime.toFixed(3);
+                        const parts = timeStr.split('.');
+                        const integerPart = parts[0];
+                        const decimalPart = parts[1];
+                        
+                        resultHtml = `
+                            <span class="font-bold text-2xl text-white align-baseline">${integerPart}</span><!--
+                            --><span class="font-bold text-xl text-white align-baseline">.${decimalPart}s</span>
+                        `;
+                    }
+                }
+
+                li.innerHTML = `
+                    <div class="flex justify-between items-center w-full"> 
+                        <div class="mb-1 sm:mb-0 flex-shrink-0"> 
+                            <span class="font-bold text-lg ${p.bgColor} text-white px-2 py-1 rounded font-numeric">${playerTag}</span>
+                        </div>
+                        <div class="text-right font-numeric text-base sm:text-lg"> 
+                            ${originalTimeStr}
+                            ${arrow}
+                            ${resultHtml} 
+                        </div>
+                    </div>
+                `; 
+                resultsList.appendChild(li);
+            });
+
+            statusMessage.classList.add('hidden');
+            resultsScreen.classList.remove('hidden'); // Show Modal
+        }
+
+        // 7. Go to Main Menu
+        function goToMainMenu() {
+            gameState = 'setup';
+            if (gameTimeout) clearTimeout(gameTimeout);
+            touchAreasContainer.innerHTML = '';
+            resultsList.innerHTML = '';
+            
+            setupScreen.classList.remove('hidden');
+            gameScreen.classList.add('hidden');
+            resultsScreen.classList.add('hidden');
+            statusMessage.classList.add('hidden');
+            
+            preGameControls.classList.remove('invisible'); 
+            gameStatusHint.textContent = '設定手牌數量，然後按下按鈕開始倒數';
+            gameStatusHint.classList.remove('hidden'); 
+        }
+        
+        function resetGame() {
+            resultsScreen.classList.add('hidden'); 
+            goToMainMenu(); 
+        }
+        
+        // 8. Play Again
+        function playAgain() {
+            resetRound();
+        }
+        
+        // 9. Reset Round (Keep cards)
+        function resetRound() {
+            resultsScreen.classList.add('hidden'); // Hide Modal
+            gameState = 'ready';
+            playersFinishedCount = 0;
+            globalStartTime = 0;
+            if (gameTimeout) clearTimeout(gameTimeout);
+            
+            players.forEach(p => {
+                p.endTime = 0;
+                p.finalTime = 0;
+                p.calculatedTime = 0;
+                p.failed = false;
+                
+                const area = document.getElementById(`player-${p.id}`);
+                area.classList.remove('done', 'charging', 'failed');
+                area.classList.add('ready'); 
+                area.textContent = p.playerLabel; 
+            });
+            
+            preGameControls.classList.remove('invisible');
+            gameStatusHint.textContent = '設定手牌數量，然後按下按鈕開始倒數';
+            gameStatusHint.classList.remove('hidden');
+            statusMessage.classList.add('hidden');
+        }
+        
+        // Prevent scrolling/context menu
+        document.addEventListener('touchmove', function (e) {
+            e.preventDefault();
+        }, { passive: false });
+        
+        window.oncontextmenu = function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            return false;
+        };
+
+    </script>
+</body>
+</html>
